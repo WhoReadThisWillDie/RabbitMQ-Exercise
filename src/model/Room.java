@@ -22,6 +22,6 @@ public class Room {
 
     @Override
     public String toString() {
-        return "Room number %d: %s".formatted(number, isBooked ? "booked" : "not booked");
+        return "Room %d: %s".formatted(number, isBooked ? "booked" : "not booked");
     }
 }

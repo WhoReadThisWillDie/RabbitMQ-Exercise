@@ -15,7 +15,8 @@ public class RentalAgent {
     private Connection connection;
     private Channel channel;
 
-    private String callbackQueue;
+    private String callbackQueue1;
+    private String callbackQueue2;
     private String uuid;
 
     public void run() throws IOException, TimeoutException {
@@ -23,57 +24,75 @@ public class RentalAgent {
         connection = connectionFactory.newConnection();
         channel = connection.createChannel();
 
-        channel.exchangeDeclare(ExchangeType.AGENT_BUILDING.getName(), BuiltinExchangeType.DIRECT);
+        channel.exchangeDeclare(ExchangeType.CLIENT_AGENT.getName(), BuiltinExchangeType.DIRECT);
+        channel.queueDeclare(QueueType.CLIENT_AGENT.getName(), false, false, false, null);
+        channel.queueBind(QueueType.CLIENT_AGENT.getName(), ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey());
 
+        channel.exchangeDeclare(ExchangeType.AGENT_BUILDING.getName(), BuiltinExchangeType.DIRECT);
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDINGS.getName(), BuiltinExchangeType.FANOUT);
 
-        callbackQueue = channel.queueDeclare().getQueue();
+        callbackQueue1 = channel.queueDeclare().getQueue();
+        callbackQueue2 = channel.queueDeclare().getQueue();
         uuid = UUID.randomUUID().toString();
-        channel.queueBind(callbackQueue, ExchangeType.AGENT_BUILDING.getName(), uuid);
-        channel.queueBind(callbackQueue, ExchangeType.AGENT_BUILDINGS.getName(), "");
+        channel.queueBind(callbackQueue1, ExchangeType.AGENT_BUILDING.getName(), uuid);
+        channel.queueBind(callbackQueue2, ExchangeType.AGENT_BUILDINGS.getName(), "");
 
         listenForClientMessages();
         listenForBuildingMessages();
     }
 
-    private void listenForClientMessages() throws IOException, TimeoutException {
+    private void listenForClientMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String message = new String(delivery.getBody());
             String clientId = delivery.getProperties().getCorrelationId();
 
-            System.out.println("Received message: " + message + " from client with ID: " + clientId);
+            System.out.println("Received message from client with ID: " + clientId + " - " + message);
 
             switch (message) {
-                case "1" -> {
-                    System.out.println("Sent message to get all buildings");
-                    BasicProperties callbackProperties = new BasicProperties.Builder().messageId(clientId).correlationId(uuid).build();
-                    channel.basicPublish(ExchangeType.AGENT_BUILDINGS.getName(),
-                            "", callbackProperties, message.getBytes());
+                case "GET_ALL_ROOMS" -> {
+                    System.out.println("Forwarding request to all buildings");
+                    BasicProperties callbackProperties = new BasicProperties.Builder()
+                            .messageId(delivery.getProperties().getCorrelationId())
+                            .correlationId(uuid)
+                            .build();
+                    channel.basicPublish(ExchangeType.AGENT_BUILDINGS.getName(), "", callbackProperties, message.getBytes());
                 }
-                case "Building1:1" -> {
-                    System.out.println("NOT IMPLEMENTED");
-//                    BasicProperties callbackProperties = new BasicProperties.Builder()
-//                            .headers(Map.of()).correlationId(uuid).build();
-//                    channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
-//                            RoutingKey.AGENT_BUILDING.getKey(), callbackProperties, message.getBytes());
-                }
+//                default -> {
+//                    System.out.println("Forwarding room booking request to specific building");
+//                    // Forward the request to the specific building
+//                    String[] parts = message.split(":");
+//                    if (parts.length == 2) {
+//                        String buildingId = parts[0];
+//                        BasicProperties callbackProperties = new BasicProperties.Builder()
+//                                .correlationId(clientId)
+//                                .build();
+//                        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), buildingId, callbackProperties, message.getBytes());
+//                    }
+//                }
             }
         };
 
-        channel.basicConsume(QueueType.CLIENT_AGENT.getName(), true, deliverCallback, consumerTag -> {});
+        channel.basicConsume(QueueType.CLIENT_AGENT.getName(), true, deliverCallback, consumerTag -> {
+        });
     }
 
-    private void listenForBuildingMessages() throws IOException, TimeoutException {
+    private void listenForBuildingMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            String finalMessage = new String(delivery.getBody());
+            String responseMessage = new String(delivery.getBody());
             String clientId = delivery.getProperties().getMessageId();
 
-            System.out.println("Received from building: " + finalMessage);
-            channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, finalMessage.getBytes());
+            System.out.println("Received message from building: " + responseMessage);
+            System.out.println("Forwarding response to client with ID: " + clientId);
+
+            // Forward response back to the client
+            channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
         };
 
-        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {});
+        // Listen for responses from buildings
+        channel.basicConsume(callbackQueue1, true, deliverCallback, consumerTag -> {
+        });
     }
+
 
     public static void main(String[] args) throws IOException, TimeoutException {
         new RentalAgent().run();

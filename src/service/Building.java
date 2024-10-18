@@ -19,7 +19,7 @@ public class Building {
     private final List<Room> rooms = List.of(new Room(1), new Room(2), new Room(3));
 
     public Building(String name) {
-        this.name = name;
+        this.name = "Bulding " + name;
     }
 
     private void run() throws IOException, TimeoutException {
@@ -41,19 +41,35 @@ public class Building {
     private void listenForMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String message = new String(delivery.getBody());
-
             String agentId = delivery.getProperties().getCorrelationId();
 
-            System.out.println("Received from Agent: " + message);
+            System.out.println("Received message from Agent: " + message);
 
             switch (message) {
-                case "1" -> channel.basicPublish(ExchangeType.AGENT_BUILDINGS.getName(),
-                        agentId, delivery.getProperties(), this.toString().getBytes());
+                case "GET_ALL_ROOMS" -> {
+                    System.out.println("Sending room info back to agent");
+                    String roomsInfo = this.toString();
+                    channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
+                            agentId, delivery.getProperties(), roomsInfo.getBytes());
+                }
+//                default -> {
+//                    System.out.println("Processing booking request");
+//                    String[] parts = message.split(":");
+//                    if (parts.length == 2) {
+//                        int roomNumber = Integer.parseInt(parts[1]);
+//                        bookRoom(new Room(roomNumber));
+//                        System.out.println("Room booked: " + roomNumber);
+//                        String response = "Room " + roomNumber + " in building " + name + " has been booked.";
+//                        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), agentId, null, response.getBytes());
+//                    }
+//                }
             }
         };
 
-        channel.basicConsume(QueueType.AGENT_BUILDING.getName() + name, deliverCallback, consumerTag -> {});
-        channel.basicConsume(QueueType.AGENT_BUILDINGS.getName() + name, deliverCallback, consumerTag -> {});
+        // Listen for specific building messages
+        channel.basicConsume(QueueType.AGENT_BUILDING.getName() + name, true, deliverCallback, consumerTag -> {});
+        // Listen for general broadcast messages
+        channel.basicConsume(QueueType.AGENT_BUILDINGS.getName() + name, true, deliverCallback, consumerTag -> {});
     }
 
     public void bookRoom(Room bookedRoom) throws IllegalStateException {

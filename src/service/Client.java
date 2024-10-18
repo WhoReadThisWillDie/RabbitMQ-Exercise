@@ -31,8 +31,6 @@ public class Client {
         channel = connection.createChannel();
 
         channel.exchangeDeclare(ExchangeType.CLIENT_AGENT.getName(), BuiltinExchangeType.DIRECT);
-        channel.queueDeclare(QueueType.CLIENT_AGENT.getName(), false, false, false, null);
-        channel.queueBind(QueueType.CLIENT_AGENT.getName(), ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey());
 
         callbackQueue = channel.queueDeclare().getQueue();
         uuid = UUID.randomUUID().toString();
@@ -45,9 +43,8 @@ public class Client {
 
     public void getAllRooms() throws IOException {
         System.out.println("Sent get request to agent");
-        callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
         channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
-                callbackProperties, "1".getBytes());
+                callbackProperties, "GET_ALL_ROOMS".getBytes());
     }
 
     public void bookRoom(String building, int roomNumber) throws IOException {
@@ -61,12 +58,13 @@ public class Client {
     private void listenForMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String message = new String(delivery.getBody());
-
             System.out.println("Message received: " + message);
+            // Process the response
         };
 
-        channel.basicConsume(callbackQueue, deliverCallback, consumerTag -> {});
+        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {});
     }
+
 
     public void close() throws IOException, TimeoutException {
         channel.close();
