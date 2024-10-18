@@ -1,3 +1,3 @@
 package model;
 
-public record Reservation(String building, int number, String reservationNumber) {}
+public record Reservation(String building, int roomNumber, String reservationNumber) {}

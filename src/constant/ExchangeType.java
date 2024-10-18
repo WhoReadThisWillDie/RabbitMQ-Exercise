@@ -1,9 +1,9 @@
 package constant;
 
 public enum ExchangeType {
-    USER_AGENT("UserAgentExchange"),
-    AGENT_BOOKING("AgentBookingExchange");
-
+    CLIENT_AGENT("ClientAgentExchange"),
+    AGENT_BUILDING("AgentBuildingExchange"),
+    AGENT_BUILDINGS("AgentBuildingsExchange");
 
     private final String name;
 

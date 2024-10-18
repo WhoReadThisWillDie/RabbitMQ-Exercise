@@ -1,53 +1,75 @@
 package service;
 
+import com.rabbitmq.client.*;
 import com.rabbitmq.client.AMQP.BasicProperties;
-import com.rabbitmq.client.BuiltinExchangeType;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import constant.ExchangeType;
 import constant.QueueType;
 import constant.RoutingKey;
 import model.Reservation;
-import util.Utils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 
 public class Client {
-    private final String name;
     private Connection connection;
     private Channel channel;
 
-    private final ArrayList<Reservation> reservations = new ArrayList<>();
+    private String callbackQueue;
+    private String uuid;
+    private BasicProperties callbackProperties;
 
-    public Client(String name) {
-        this.name = name;
-    }
+    private final ArrayList<Reservation> reservations = new ArrayList<>();
 
     public void connect() throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         connection = factory.newConnection();
         channel = connection.createChannel();
 
-        channel.exchangeDeclare(ExchangeType.USER_AGENT.getName(), BuiltinExchangeType.DIRECT);
-        channel.queueDeclare(QueueType.USER_AGENT.getName(), false, false, false, null);
-        channel.queueBind(QueueType.USER_AGENT.getName(), ExchangeType.USER_AGENT.getName(), RoutingKey.USER_AGENT.getKey());
+        channel.exchangeDeclare(ExchangeType.CLIENT_AGENT.getName(), BuiltinExchangeType.DIRECT);
+        channel.queueDeclare(QueueType.CLIENT_AGENT.getName(), false, false, false, null);
+        channel.queueBind(QueueType.CLIENT_AGENT.getName(), ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey());
+
+        callbackQueue = channel.queueDeclare().getQueue();
+        uuid = UUID.randomUUID().toString();
+        channel.queueBind(callbackQueue, ExchangeType.CLIENT_AGENT.getName(), uuid);
+
+        callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
+
+        listenForMessages();
     }
 
-    public void getAllRooms() {
-
+    public void getAllRooms() throws IOException {
+        System.out.println("Sent get request to agent");
+        callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
+        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
+                callbackProperties, "1".getBytes());
     }
 
     public void bookRoom(String building, int roomNumber) throws IOException {
-        BasicProperties props = new BasicProperties.Builder()
-                .correlationId(name)
-                .replyTo(QueueType.USER_AGENT.getName())
-                .build();
+        System.out.println("Sent book request to agent");
+        callbackProperties = new BasicProperties.Builder()
+                .headers(Map.of("BuildingId", building, "Room", roomNumber)).correlationId(uuid).build();
+        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
+                callbackProperties, "%s:%d".formatted(building, roomNumber).getBytes());
+    }
 
-        channel.basicPublish(ExchangeType.USER_AGENT.getName(), RoutingKey.USER_AGENT.getKey(),
-                props, Utils.serializeMessage(building, roomNumber).getBytes());
+    private void listenForMessages() throws IOException {
+        DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+            String message = new String(delivery.getBody());
+
+            System.out.println("Message received: " + message);
+        };
+
+        channel.basicConsume(callbackQueue, deliverCallback, consumerTag -> {});
+    }
+
+    public void close() throws IOException, TimeoutException {
+        channel.close();
+        connection.close();
     }
 }

@@ -1,8 +1,9 @@
 package constant;
 
 public enum QueueType {
-    USER_AGENT("UserAgentQueue"),
-    AGENT_BOOKING("AgentBookingQueue");
+    CLIENT_AGENT("ClientAgentQueue"),
+    AGENT_BUILDING("AgentBuildingQueue"),
+    AGENT_BUILDINGS("AgentBuildingsQueue");
 
     private final String name;
 
