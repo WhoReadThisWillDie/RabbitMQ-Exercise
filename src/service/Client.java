@@ -3,7 +3,7 @@ package service;
 import com.rabbitmq.client.*;
 import com.rabbitmq.client.AMQP.BasicProperties;
 import constant.ExchangeType;
-import constant.QueueType;
+import constant.RequestType;
 import constant.RoutingKey;
 import model.Reservation;
 
@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 
 
 public class Client {
@@ -36,30 +35,34 @@ public class Client {
         uuid = UUID.randomUUID().toString();
         channel.queueBind(callbackQueue, ExchangeType.CLIENT_AGENT.getName(), uuid);
 
-        callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
-
         listenForMessages();
     }
 
-    public void getAllRooms() throws IOException {
+    public void getAllBuildings() throws IOException {
         System.out.println("Sent get request to agent");
+
+        callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
+
         channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
-                callbackProperties, "GET_ALL_ROOMS".getBytes());
+                callbackProperties, RequestType.GET_ALL_BUILDINGS.getName().getBytes());
     }
 
-    public void bookRoom(String building, int roomNumber) throws IOException {
+    public void bookRoom(int buildingId, int roomNumber) throws IOException {
         System.out.println("Sent book request to agent");
+
         callbackProperties = new BasicProperties.Builder()
-                .headers(Map.of("BuildingId", building, "Room", roomNumber)).correlationId(uuid).build();
+                .headers(Map.of("buildingId", buildingId, "roomNumber", roomNumber))
+                .correlationId(uuid)
+                .build();
+
         channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
-                callbackProperties, "%s:%d".formatted(building, roomNumber).getBytes());
+                callbackProperties, RequestType.BOOK_ROOM.getName().getBytes());
     }
 
     private void listenForMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String message = new String(delivery.getBody());
             System.out.println("Message received: " + message);
-            // Process the response
         };
 
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {});

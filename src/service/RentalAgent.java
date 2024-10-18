@@ -4,6 +4,7 @@ import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.*;
 import constant.ExchangeType;
 import constant.QueueType;
+import constant.RequestType;
 import constant.RoutingKey;
 
 import java.io.IOException;
@@ -48,27 +49,38 @@ public class RentalAgent {
 
             System.out.println("Received message from client with ID: " + clientId + " - " + message);
 
-            switch (message) {
-                case "GET_ALL_ROOMS" -> {
-                    System.out.println("Forwarding request to all buildings");
-                    BasicProperties callbackProperties = new BasicProperties.Builder()
-                            .messageId(delivery.getProperties().getCorrelationId())
-                            .correlationId(uuid)
-                            .build();
-                    channel.basicPublish(ExchangeType.AGENT_BUILDINGS.getName(), "", callbackProperties, message.getBytes());
-                }
-//                default -> {
-//                    System.out.println("Forwarding room booking request to specific building");
-//                    // Forward the request to the specific building
-//                    String[] parts = message.split(":");
-//                    if (parts.length == 2) {
-//                        String buildingId = parts[0];
-//                        BasicProperties callbackProperties = new BasicProperties.Builder()
-//                                .correlationId(clientId)
-//                                .build();
-//                        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), buildingId, callbackProperties, message.getBytes());
-//                    }
-//                }
+            if (message.equals(RequestType.GET_ALL_BUILDINGS.getName())) {
+                System.out.println("Forwarding request to all buildings");
+
+                BasicProperties callbackProperties = new BasicProperties.Builder()
+                        .messageId(delivery.getProperties().getCorrelationId())
+                        .correlationId(uuid)
+                        .build();
+
+                channel.basicPublish(ExchangeType.AGENT_BUILDINGS.getName(), "", callbackProperties, message.getBytes());
+            }
+            else if (message.equals(RequestType.BOOK_ROOM.getName())) {
+                int buildingId = Integer.parseInt(delivery.getProperties().getHeaders().get("buildingId").toString());
+
+                BasicProperties callbackProperties = new BasicProperties.Builder()
+                        .headers(delivery.getProperties().getHeaders())
+                        .messageId(delivery.getProperties().getCorrelationId())
+                        .correlationId(uuid)
+                        .build();
+
+                System.out.println("Forwarding request to building " + buildingId);
+
+                channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), String.valueOf(buildingId), true, callbackProperties, message.getBytes());
+
+                channel.addReturnListener(undeliveredMessage -> {
+                    String responseMessage = "Your booking request was not delivered. Please specify existing building number";
+
+                    try {
+                        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             }
         };
 
@@ -84,11 +96,9 @@ public class RentalAgent {
             System.out.println("Received message from building: " + responseMessage);
             System.out.println("Forwarding response to client with ID: " + clientId);
 
-            // Forward response back to the client
             channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
         };
 
-        // Listen for responses from buildings
         channel.basicConsume(callbackQueue1, true, deliverCallback, consumerTag -> {
         });
     }

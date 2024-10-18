@@ -7,8 +7,8 @@ import model.Reservation;
 public class Utils {
     private static final ObjectMapper mapper = new ObjectMapper();
 
-    public static String serializeMessage(String building, int number) throws JsonProcessingException {
-        return mapper.writeValueAsString("%s:%d".formatted(building, number));
+    public static String serializeMessage(Reservation reservation) throws JsonProcessingException {
+        return mapper.writeValueAsString(reservation.toString());
     }
 
     public static Reservation deserializeMessage(String message) throws JsonProcessingException {

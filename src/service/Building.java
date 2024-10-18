@@ -3,23 +3,26 @@ package service;
 import com.rabbitmq.client.*;
 import constant.ExchangeType;
 import constant.QueueType;
-import constant.RoutingKey;
+import constant.RequestType;
+import model.Reservation;
 import model.Room;
+import util.Utils;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 public class Building {
     private Connection connection;
     private Channel channel;
 
-    private final String name;
+    private final int id;
     private final List<Room> rooms = List.of(new Room(1), new Room(2), new Room(3));
 
-    public Building(String name) {
-        this.name = "Bulding " + name;
+    private Building(int id) {
+        this.id = id;
     }
 
     private void run() throws IOException, TimeoutException {
@@ -28,12 +31,12 @@ public class Building {
         channel = connection.createChannel();
 
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDING.getName(), BuiltinExchangeType.DIRECT);
-        channel.queueDeclare(QueueType.AGENT_BUILDING.getName() + name, false, false, false, null);
-        channel.queueBind(QueueType.AGENT_BUILDING.getName() + name, ExchangeType.AGENT_BUILDING.getName(), name);
+        channel.queueDeclare(QueueType.AGENT_BUILDING.getName() + id, false, false, false, null);
+        channel.queueBind(QueueType.AGENT_BUILDING.getName() + id, ExchangeType.AGENT_BUILDING.getName(), String.valueOf(id));
 
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDINGS.getName(), BuiltinExchangeType.FANOUT);
-        channel.queueDeclare(QueueType.AGENT_BUILDINGS.getName() + name, false, false, false, null);
-        channel.queueBind(QueueType.AGENT_BUILDINGS.getName() + name, ExchangeType.AGENT_BUILDINGS.getName(), "");
+        channel.queueDeclare(QueueType.AGENT_BUILDINGS.getName() + id, false, false, false, null);
+        channel.queueBind(QueueType.AGENT_BUILDINGS.getName() + id, ExchangeType.AGENT_BUILDINGS.getName(), "");
 
         listenForMessages();
     }
@@ -45,34 +48,56 @@ public class Building {
 
             System.out.println("Received message from Agent: " + message);
 
-            switch (message) {
-                case "GET_ALL_ROOMS" -> {
-                    System.out.println("Sending room info back to agent");
-                    String roomsInfo = this.toString();
-                    channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
-                            agentId, delivery.getProperties(), roomsInfo.getBytes());
+            if (message.equals(RequestType.GET_ALL_BUILDINGS.getName())) {
+                System.out.println("Sending room info back to agent");
+
+                channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
+                        agentId, delivery.getProperties(), this.toString().getBytes());
+            } else if (message.equals(RequestType.BOOK_ROOM.getName())) {
+                System.out.println("Processing booking request");
+                int roomNumber = Integer.parseInt(delivery.getProperties().getHeaders().get("roomNumber").toString());
+
+                boolean roomExists = false;
+
+                for (Room room : rooms) {
+                    if (room.getNumber() == roomNumber) {
+                        roomExists = true;
+
+                        if (!room.isBooked()) {
+                            System.out.println("Room booked successfully");
+
+                            room.book();
+                            Reservation reservation = new Reservation(id, roomNumber, UUID.randomUUID().toString().substring(0, 4));
+
+                            channel.basicPublish(
+                                    ExchangeType.AGENT_BUILDING.getName(),
+                                    agentId, delivery.getProperties(),
+                                    Utils.serializeMessage(reservation).getBytes()
+                            );
+                        } else {
+                            System.out.println("Room is already booked");
+
+                            channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
+                                    agentId, delivery.getProperties(), "This room is already booked".getBytes());
+                        }
+                    }
                 }
-//                default -> {
-//                    System.out.println("Processing booking request");
-//                    String[] parts = message.split(":");
-//                    if (parts.length == 2) {
-//                        int roomNumber = Integer.parseInt(parts[1]);
-//                        bookRoom(new Room(roomNumber));
-//                        System.out.println("Room booked: " + roomNumber);
-//                        String response = "Room " + roomNumber + " in building " + name + " has been booked.";
-//                        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), agentId, null, response.getBytes());
-//                    }
-//                }
+
+                if (!roomExists) {
+                    channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
+                            agentId, delivery.getProperties(), "Wrong room number".getBytes());
+                }
             }
         };
 
-        // Listen for specific building messages
-        channel.basicConsume(QueueType.AGENT_BUILDING.getName() + name, true, deliverCallback, consumerTag -> {});
-        // Listen for general broadcast messages
-        channel.basicConsume(QueueType.AGENT_BUILDINGS.getName() + name, true, deliverCallback, consumerTag -> {});
+        channel.basicConsume(QueueType.AGENT_BUILDING.getName() + id, true, deliverCallback, consumerTag -> {
+        });
+
+        channel.basicConsume(QueueType.AGENT_BUILDINGS.getName() + id, true, deliverCallback, consumerTag -> {
+        });
     }
 
-    public void bookRoom(Room bookedRoom) throws IllegalStateException {
+    private void bookRoom(Room bookedRoom) throws IllegalStateException {
         for (Room room : rooms) {
             if (bookedRoom.equals(room)) {
                 room.book();
@@ -83,17 +108,17 @@ public class Building {
     @Override
     public String toString() {
         StringBuilder str = new StringBuilder();
-        str.append("\n%s:\n".formatted(name));
+        str.append("\nBuilding %d:".formatted(id));
 
         for (Room room : rooms) {
-            str.append("\t%s\n".formatted(room));
+            str.append("\n\t%s".formatted(room));
         }
 
         return str.toString();
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
-        System.out.print("Please choose an ID for this building: ");
-        new Building(new Scanner(System.in).nextLine()).run();
+        System.out.print("Please specify an ID for this building: ");
+        new Building(new Scanner(System.in).nextInt()).run();
     }
 }

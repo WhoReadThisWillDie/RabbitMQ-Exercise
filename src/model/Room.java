@@ -8,12 +8,12 @@ public class Room {
         this.number = number;
     }
 
-    public synchronized void book() throws IllegalStateException {
-        if (isBooked) {
-            throw new IllegalStateException("This room is already booked");
-        }
-
+    public void book() {
         isBooked = true;
+    }
+
+    public int getNumber() {
+        return number;
     }
 
     public boolean isBooked() {
