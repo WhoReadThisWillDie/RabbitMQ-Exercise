@@ -5,15 +5,11 @@ import java.util.UUID;
 public class Room {
     private final int number;
     private boolean isBooked = false;
+    private boolean isPending = false;
     private String reservationCode;
 
     public Room(int number) {
         this.number = number;
-    }
-
-    public void book() {
-        this.isBooked = true;
-        this.reservationCode = UUID.randomUUID().toString().substring(0, 4);
     }
 
     public int getNumber() {
@@ -21,10 +17,9 @@ public class Room {
     }
 
     public String getReservationCode() {
-        if (!isBooked) {
-            return "This room is not booked yet";
+        if (reservationCode == null) {
+            return "Room was not booked or reserved yet";
         }
-
         return reservationCode;
     }
 
@@ -32,8 +27,35 @@ public class Room {
         return isBooked;
     }
 
+    public boolean isPending() {
+        return isPending;
+    }
+
+    public void book() {
+        isPending = false;
+        isBooked = true;
+    }
+
+    public void reserve() {
+        isPending = true;
+        reservationCode = UUID.randomUUID().toString().substring(0, 4);
+    }
+
+    public void cancel() {
+        reservationCode = null;
+        isPending = false;
+        isBooked = false;
+    }
+
     @Override
     public String toString() {
-        return "Room %d".formatted(number);
+        StringBuilder str = new StringBuilder();
+        str.append("Room %d: ".formatted(number));
+
+        if (isPending) str.append("pending");
+        else if (isBooked) str.append("booked");
+        else str.append("not booked");
+
+        return str.toString();
     }
 }

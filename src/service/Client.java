@@ -65,15 +65,49 @@ public class Client {
                 callbackProperties, RequestType.BOOK_ROOM.getName().getBytes());
     }
 
+    public void listAllReservations() {
+        reservations.forEach(System.out::println);
+    }
+
+    public void confirmReservation(int buildingId, String reservationCode, CountDownLatch latch) throws IOException {
+        this.latch = latch;
+        System.out.println("Sent confirmation request to agent");
+        callbackProperties = new BasicProperties.Builder()
+                .headers(Map.of("buildingId", buildingId, "reservationCode", reservationCode))
+                .correlationId(uuid)
+                .build();
+
+        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
+                callbackProperties, RequestType.CONFIRM_RESERVATION.getName().getBytes());
+    }
+
+    public void cancelReservation(int buildingId, String reservationCode, CountDownLatch latch) throws IOException {
+        this.latch = latch;
+        System.out.println("Sent cancellation request to agent");
+        callbackProperties = new BasicProperties.Builder()
+                .headers(Map.of("buildingId", buildingId, "reservationCode", reservationCode))
+                .correlationId(uuid)
+                .build();
+
+        for (Reservation reservation : reservations) {
+            if (reservation.reservationCode() == reservationCode) {
+                reservations.remove(reservation);
+            }
+        }
+
+        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), RoutingKey.CLIENT_AGENT.getKey(),
+                callbackProperties, RequestType.CANCEL_RESERVATION.getName().getBytes());
+    }
+
     private void listenForMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             if (new String(delivery.getBody()).contains("{")) {
                 Reservation reservation = Utils.deserializeMessage(new String(delivery.getBody()));
                 reservations.add(reservation);
-                System.out.println("Message received: " + reservation);
+                System.out.println("\nMessage received: " + reservation);
             }
             else {
-                System.out.println("Message received: " + new String(delivery.getBody()));
+                System.out.println("\nMessage received: " + new String(delivery.getBody()));
             }
 
             if (latch != null) {
@@ -83,7 +117,6 @@ public class Client {
 
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {});
     }
-
 
     public void close() throws IOException, TimeoutException {
         channel.close();

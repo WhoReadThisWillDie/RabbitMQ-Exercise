@@ -18,10 +18,11 @@ public class RentalAgent {
     private Channel channel;
 
     private String callbackQueue;
+    private String buildingsQueue;
     private String uuid;
 
     private CompletableFuture<String> futureResponse;
-    private int callbackTimeout = 1000;
+    private int callbackTimeout = 3000;
 
     private ArrayList<String> buildingsInfo = new ArrayList<>();
 
@@ -40,8 +41,8 @@ public class RentalAgent {
         channel.queueBind(callbackQueue, ExchangeType.AGENT_BUILDING.getName(), uuid);
 
         channel.exchangeDeclare(ExchangeType.BUILDING_AGENTS.getName(), BuiltinExchangeType.FANOUT);
-        channel.queueDeclare(QueueType.BUILDING_AGENTS.getName() + uuid, false, false, false, null);
-        channel.queueBind(QueueType.BUILDING_AGENTS.getName() + uuid, ExchangeType.BUILDING_AGENTS.getName(), "");
+        buildingsQueue = channel.queueDeclare().getQueue();
+        channel.queueBind(buildingsQueue, ExchangeType.BUILDING_AGENTS.getName(), "");
 
         listenForBuildingsInfo();
         listenForClientMessages();
@@ -70,17 +71,18 @@ public class RentalAgent {
     }
 
     private void sendRequestToBuilding(BasicProperties properties, String message) throws IOException {
-        int buildingId = Integer.parseInt(properties.getHeaders().get("buildingId").toString());
+        String buildingId = (properties.getHeaders().get("buildingId").toString());
 
         BasicProperties callbackProperties = new BasicProperties.Builder()
                 .headers(properties.getHeaders())
                 .messageId(properties.getCorrelationId())
+                .headers(properties.getHeaders())
                 .correlationId(uuid)
                 .build();
 
         System.out.println("Forwarding request to building " + buildingId);
 
-        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), String.valueOf(buildingId), true, callbackProperties, message.getBytes());
+        channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), buildingId, true, callbackProperties, message.getBytes());
     }
 
     private void setCallbackTimeout(String clientId) {
@@ -89,7 +91,7 @@ public class RentalAgent {
         scheduler.schedule(() -> {
             if (!futureResponse.isDone()) {
                 String responseMessage = "The building did not respond in time (%d second)\n".formatted(callbackTimeout / 1000) +
-                        "This building does not exist or currently is offline";
+                        "This building does not exist or is currently offline";
 
                 try {
                     channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
@@ -123,10 +125,19 @@ public class RentalAgent {
     private void listenForBuildingsInfo() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             System.out.println("Received building info");
-            buildingsInfo.add(new String(delivery.getBody()));
+            String message = new String(delivery.getBody());
+            String buildingId = delivery.getProperties().getHeaders().get("buildingId").toString();
+
+            for (String buildingInfo : buildingsInfo) {
+                if (buildingInfo.contains("Building " + buildingId)) {
+                    buildingsInfo.remove(buildingInfo);
+                    break;
+                }
+            }
+            buildingsInfo.add(message);
         };
 
-        channel.basicConsume(QueueType.BUILDING_AGENTS.getName() + uuid, true, deliverCallback, consumerTag -> {
+        channel.basicConsume(buildingsQueue, true, deliverCallback, consumerTag -> {
         });
     }
 
