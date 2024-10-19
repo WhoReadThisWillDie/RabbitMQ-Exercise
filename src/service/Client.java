@@ -6,11 +6,13 @@ import constant.ExchangeType;
 import constant.RequestType;
 import constant.RoutingKey;
 import model.Reservation;
+import util.Utils;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
 
 
@@ -21,6 +23,8 @@ public class Client {
     private String callbackQueue;
     private String uuid;
     private BasicProperties callbackProperties;
+
+    private CountDownLatch latch;
 
     private final ArrayList<Reservation> reservations = new ArrayList<>();
 
@@ -38,7 +42,8 @@ public class Client {
         listenForMessages();
     }
 
-    public void getAllBuildings() throws IOException {
+    public void getAllBuildings(CountDownLatch latch) throws IOException {
+        this.latch = latch;
         System.out.println("Sent get request to agent");
 
         callbackProperties = new BasicProperties.Builder().correlationId(uuid).build();
@@ -47,7 +52,8 @@ public class Client {
                 callbackProperties, RequestType.GET_ALL_BUILDINGS.getName().getBytes());
     }
 
-    public void bookRoom(int buildingId, int roomNumber) throws IOException {
+    public void bookRoom(int buildingId, int roomNumber, CountDownLatch latch) throws IOException {
+        this.latch = latch;
         System.out.println("Sent book request to agent");
 
         callbackProperties = new BasicProperties.Builder()
@@ -61,8 +67,18 @@ public class Client {
 
     private void listenForMessages() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            String message = new String(delivery.getBody());
-            System.out.println("Message received: " + message);
+            if (new String(delivery.getBody()).contains("{")) {
+                Reservation reservation = Utils.deserializeMessage(new String(delivery.getBody()));
+                reservations.add(reservation);
+                System.out.println("Message received: " + reservation);
+            }
+            else {
+                System.out.println("Message received: " + new String(delivery.getBody()));
+            }
+
+            if (latch != null) {
+                latch.countDown();
+            }
         };
 
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {});

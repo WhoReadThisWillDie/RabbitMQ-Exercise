@@ -1,9 +1,7 @@
 package constant;
 
 public enum RoutingKey {
-    CLIENT_AGENT("ClientAgentKey"),
-    AGENT_BUILDING("AgentBuildingKey"),
-    AGENT_BUILDINGS("AgentBuildingsKey");
+    CLIENT_AGENT("ClientAgentKey");
 
     private final String key;
 

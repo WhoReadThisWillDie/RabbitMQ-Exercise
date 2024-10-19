@@ -49,7 +49,7 @@ public class Building {
             System.out.println("Received message from Agent: " + message);
 
             if (message.equals(RequestType.GET_ALL_BUILDINGS.getName())) {
-                System.out.println("Sending room info back to agent");
+                System.out.println("Sending building info back to agent");
 
                 channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(),
                         agentId, delivery.getProperties(), this.toString().getBytes());
@@ -95,14 +95,6 @@ public class Building {
 
         channel.basicConsume(QueueType.AGENT_BUILDINGS.getName() + id, true, deliverCallback, consumerTag -> {
         });
-    }
-
-    private void bookRoom(Room bookedRoom) throws IllegalStateException {
-        for (Room room : rooms) {
-            if (bookedRoom.equals(room)) {
-                room.book();
-            }
-        }
     }
 
     @Override

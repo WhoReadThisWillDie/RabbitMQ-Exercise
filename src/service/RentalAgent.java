@@ -9,18 +9,20 @@ import constant.RoutingKey;
 
 import java.io.IOException;
 import java.util.UUID;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 
 public class RentalAgent {
 
     private Connection connection;
     private Channel channel;
 
-    private String callbackQueue1;
-    private String callbackQueue2;
+    private String callbackQueue;
     private String uuid;
 
-    public void run() throws IOException, TimeoutException {
+    private CompletableFuture<String> futureResponse;
+    private int callbackTimeout = 1000;
+
+    private void run() throws IOException, TimeoutException {
         ConnectionFactory connectionFactory = new ConnectionFactory();
         connection = connectionFactory.newConnection();
         channel = connection.createChannel();
@@ -32,11 +34,9 @@ public class RentalAgent {
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDING.getName(), BuiltinExchangeType.DIRECT);
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDINGS.getName(), BuiltinExchangeType.FANOUT);
 
-        callbackQueue1 = channel.queueDeclare().getQueue();
-        callbackQueue2 = channel.queueDeclare().getQueue();
+        callbackQueue = channel.queueDeclare().getQueue();
         uuid = UUID.randomUUID().toString();
-        channel.queueBind(callbackQueue1, ExchangeType.AGENT_BUILDING.getName(), uuid);
-        channel.queueBind(callbackQueue2, ExchangeType.AGENT_BUILDINGS.getName(), "");
+        channel.queueBind(callbackQueue, ExchangeType.AGENT_BUILDING.getName(), uuid);
 
         listenForClientMessages();
         listenForBuildingMessages();
@@ -70,17 +70,24 @@ public class RentalAgent {
 
                 System.out.println("Forwarding request to building " + buildingId);
 
-                channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), String.valueOf(buildingId), true, callbackProperties, message.getBytes());
+                futureResponse = new CompletableFuture<>();
 
-                channel.addReturnListener(undeliveredMessage -> {
-                    String responseMessage = "Your booking request was not delivered. Please specify existing building number";
+                ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+                scheduler.schedule(() -> {
+                    if (!futureResponse.isDone()) {
+                        String responseMessage = "The building did not respond in time (%d second)\n".formatted(callbackTimeout / 1000) +
+                                "This building does not exist or currently is offline";
 
-                    try {
-                        channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        try {
+                            channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
-                });
+
+                }, callbackTimeout, TimeUnit.MILLISECONDS);
+
+                channel.basicPublish(ExchangeType.AGENT_BUILDING.getName(), String.valueOf(buildingId), true, callbackProperties, message.getBytes());
             }
         };
 
@@ -93,16 +100,19 @@ public class RentalAgent {
             String responseMessage = new String(delivery.getBody());
             String clientId = delivery.getProperties().getMessageId();
 
+            if (futureResponse != null) {
+                futureResponse.complete(responseMessage);
+            }
+
             System.out.println("Received message from building: " + responseMessage);
             System.out.println("Forwarding response to client with ID: " + clientId);
 
             channel.basicPublish(ExchangeType.CLIENT_AGENT.getName(), clientId, null, responseMessage.getBytes());
         };
 
-        channel.basicConsume(callbackQueue1, true, deliverCallback, consumerTag -> {
+        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
         });
     }
-
 
     public static void main(String[] args) throws IOException, TimeoutException {
         new RentalAgent().run();

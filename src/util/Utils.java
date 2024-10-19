@@ -8,7 +8,7 @@ public class Utils {
     private static final ObjectMapper mapper = new ObjectMapper();
 
     public static String serializeMessage(Reservation reservation) throws JsonProcessingException {
-        return mapper.writeValueAsString(reservation.toString());
+        return mapper.writeValueAsString(reservation);
     }
 
     public static Reservation deserializeMessage(String message) throws JsonProcessingException {

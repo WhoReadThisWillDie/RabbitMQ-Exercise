@@ -2,6 +2,7 @@ import service.Client;
 
 import java.io.IOException;
 import java.util.Scanner;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
 import java.util.spi.AbstractResourceBundleProvider;
 
@@ -28,31 +29,37 @@ public class Main {
 
             userInput = in.nextLine();
 
+            CountDownLatch latch = new CountDownLatch(1);
             switch (userInput) {
-                case "1" -> getAllBuildings();
-                case "2" -> bookRoom();
+                case "1" -> {
+                    getAllBuildings(latch);
+                    latch.await();
+                }
+                case "2" -> {
+                    bookRoom(latch);
+                    latch.await();
+                }
                 case "q" -> {}
                 default -> System.out.println("Wrong input, please try again");
             }
 
-            Thread.sleep(300);
             System.out.println();
         } while (!userInput.equals("q"));
 
         client.close();
     }
 
-    private void getAllBuildings() throws IOException {
-        client.getAllBuildings();
+    private void getAllBuildings(CountDownLatch latch) throws IOException {
+        client.getAllBuildings(latch);
     }
 
-    private void bookRoom() throws IOException {
+    private void bookRoom(CountDownLatch latch) throws IOException {
         System.out.print("ID of the building: ");
         int buildingId = Integer.parseInt(in.nextLine());
 
         System.out.print("Number of the room: ");
         int roomNumber = Integer.parseInt(in.nextLine());
 
-        client.bookRoom(buildingId, roomNumber);
+        client.bookRoom(buildingId, roomNumber, latch);
     }
 }
