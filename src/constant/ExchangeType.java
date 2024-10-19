@@ -3,7 +3,7 @@ package constant;
 public enum ExchangeType {
     CLIENT_AGENT("ClientAgentExchange"),
     AGENT_BUILDING("AgentBuildingExchange"),
-    AGENT_BUILDINGS("AgentBuildingsExchange");
+    BUILDING_AGENTS("BuildingsAgentExchange");
 
     private final String name;
 
