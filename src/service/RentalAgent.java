@@ -13,8 +13,6 @@ import java.util.UUID;
 import java.util.concurrent.*;
 
 public class RentalAgent {
-
-    private Connection connection;
     private Channel channel;
 
     private String callbackQueue;
@@ -22,13 +20,13 @@ public class RentalAgent {
     private String uuid;
 
     private CompletableFuture<String> futureResponse;
-    private int callbackTimeout = 3000;
+    private final int callbackTimeout = 3000;
 
-    private ArrayList<String> buildingsInfo = new ArrayList<>();
+    private final ArrayList<String> buildingsInfo = new ArrayList<>();
 
     private void run() throws IOException, TimeoutException {
         ConnectionFactory connectionFactory = new ConnectionFactory();
-        connection = connectionFactory.newConnection();
+        Connection connection = connectionFactory.newConnection();
         channel = connection.createChannel();
 
         channel.exchangeDeclare(ExchangeType.CLIENT_AGENT.getName(), BuiltinExchangeType.DIRECT);
@@ -75,8 +73,7 @@ public class RentalAgent {
 
         BasicProperties callbackProperties = new BasicProperties.Builder()
                 .headers(properties.getHeaders())
-                .messageId(properties.getCorrelationId())
-                .headers(properties.getHeaders())
+                .replyTo(properties.getCorrelationId())
                 .correlationId(uuid)
                 .build();
 
@@ -106,7 +103,7 @@ public class RentalAgent {
     private void listenForBookingResponses() throws IOException {
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String responseMessage = new String(delivery.getBody());
-            String clientId = delivery.getProperties().getMessageId();
+            String clientId = delivery.getProperties().getReplyTo();
 
             if (futureResponse != null) {
                 futureResponse.complete(responseMessage);

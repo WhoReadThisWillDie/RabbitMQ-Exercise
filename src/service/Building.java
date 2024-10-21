@@ -16,7 +16,6 @@ import java.util.Scanner;
 import java.util.concurrent.TimeoutException;
 
 public class Building {
-    private Connection connection;
     private Channel channel;
 
     private BasicProperties props;
@@ -30,7 +29,7 @@ public class Building {
 
     private void run() throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
-        connection = factory.newConnection();
+        Connection connection = factory.newConnection();
         channel = connection.createChannel();
 
         channel.exchangeDeclare(ExchangeType.AGENT_BUILDING.getName(), BuiltinExchangeType.DIRECT);
@@ -148,7 +147,7 @@ public class Building {
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
-        System.out.print("Please specify an ID for this building: ");
+        System.out.print("Please specify an integer ID for this building: ");
         new Building(new Scanner(System.in).nextInt()).run();
     }
 }
